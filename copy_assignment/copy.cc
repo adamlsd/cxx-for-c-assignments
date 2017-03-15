@@ -1,5 +1,6 @@
 /*
- * This is a simple file copy program in C, but it can be compiled in C++.
+ * This is a simple file copy program in C++, but it uses C style
+ * resource management.
  *
  * The design of this program is not that of a typical copy program.
  * This program's design uses a heap allocated memory block to store
@@ -23,15 +24,13 @@ struct FileGuard
 {
 	FILE *fp;
 
+	// Wouldn't it be nice if we could run this at the exit of every scope?
+	void
+	close_file()
+	{
+		fclose( fp );
+	}
 };
-
-// Wouldn't it be nice if we could run this at the exit of every scope?
-void
-close_file( FileGuard *fg )
-{
-	fprintf( stderr, "Closing file.\n" );
-	fclose( fg->fp );
-}
 
 /*
  * Returns a newly allocated buffer in `buf`, and the amount read in `amount_read`.
@@ -52,24 +51,24 @@ main( int argcnt, char *argvec[] )
 	{
 		fprintf( stderr, "%s must take two arguments: an \"infile\" "
 				"and an \"outfile\"\n", argvec[ 0 ] );
-		close_file( &infile );
-		close_file( &outfile );
+		infile.close_file();
+		outfile.close_file();
 		return -1;
 	}
 
 	if( ( infile.fp= fopen( argvec[ 1 ], "rb" ) ) == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 1 ] );
-		close_file( &infile );
-		close_file( &outfile );
+		infile.close_file();
+		outfile.close_file();
 		return -1;
 	}
 
 	if( ( outfile.fp= fopen( argvec[ 2 ], "wb" ) ) == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 2 ] );
-		close_file( &infile );
-		close_file( &outfile );
+		infile.close_file();
+		outfile.close_file();
 		return -1;
 	}
 
@@ -83,8 +82,8 @@ main( int argcnt, char *argvec[] )
 			else fprintf( stderr, "An error in reading occurred.\n" );
 
 			free( buf );
-			close_file( &infile );
-			close_file( &outfile );
+			infile.close_file();
+			outfile.close_file();
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Read %zu bytes\n", res );
@@ -93,8 +92,8 @@ main( int argcnt, char *argvec[] )
 		{
 			fprintf( stderr, "An error in copying occurred.\n" );
 			free( buf );
-			close_file( &infile );
-			close_file( &outfile );
+			infile.close_file();
+			outfile.close_file();
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Wrote %zu bytes\n", res );
@@ -104,8 +103,9 @@ main( int argcnt, char *argvec[] )
 	}
 
 	/* Copy is complete.  Free our resources. */
-	close_file( &infile );
-	close_file( &outfile );
+
+	infile.close_file();
+	outfile.close_file();
 
 	return 0;
 }
