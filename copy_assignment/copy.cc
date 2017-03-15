@@ -23,6 +23,8 @@ struct FileGuard
 {
 	FILE *fp;
 
+	FileGuard() { fp= 0; }
+
 	~FileGuard()
 	{
 		fclose( fp );
@@ -32,6 +34,8 @@ struct FileGuard
 struct MemoryGuard
 {
 	void *p;
+
+	MemoryGuard() { p= 0; }
 
 	~MemoryGuard()
 	{
@@ -48,8 +52,8 @@ static int read_buffer( size_t amount, FILE *fp, size_t *amount_read, void **buf
 int
 main( int argcnt, char *argvec[] )
 {
-	FileGuard infile= { NULL };
-	FileGuard outfile= { NULL };
+	FileGuard infile;
+	FileGuard outfile;
 	size_t res;
 
 	if( argcnt != 3 )
@@ -73,7 +77,7 @@ main( int argcnt, char *argvec[] )
 
 	while( !feof( infile.fp ) )
 	{
-		MemoryGuard buf= { NULL };
+		MemoryGuard buf;
 		if( DEBUG_MODE ) fprintf( stderr, "Try to read %zu bytes\n", res );
 		int error= read_buffer( COPYBUFSIZE, infile.fp, &res, &buf.p );
 		if( error )
