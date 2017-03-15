@@ -15,9 +15,9 @@
 #include <assert.h>
 
 /* We'll copy 256k blocks at a time, just for efficiency. */
-#define COPYBUFSIZE ( 256 * 1024 )
+const size_t COPYBUFSIZE= ( 256 * 1024 );
 
-#define DEBUG_MODE 1
+const bool DEBUG_MODE= true;
 
 struct FileGuard
 {
