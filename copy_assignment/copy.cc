@@ -19,6 +19,20 @@
 
 #define DEBUG_MODE 1
 
+struct FileGuard
+{
+	FILE *fp;
+
+};
+
+// Wouldn't it be nice if we could run this at the exit of every scope?
+void
+close_file( FileGuard *fg )
+{
+	fprintf( stderr, "Closing file.\n" );
+	fclose( fg->fp );
+}
+
 /*
  * Returns a newly allocated buffer in `buf`, and the amount read in `amount_read`.
  * Populates the buffer with data from the file, up to the amount read.
@@ -28,8 +42,8 @@ static int read_buffer( size_t amount, FILE *fp, size_t *amount_read, void **buf
 int
 main( int argcnt, char *argvec[] )
 {
-	FILE *infile;
-	FILE *outfile;
+	FileGuard infile= { NULL };
+	FileGuard outfile= { NULL };
 	void *buf;
 	size_t res;
 	int error;
@@ -38,44 +52,49 @@ main( int argcnt, char *argvec[] )
 	{
 		fprintf( stderr, "%s must take two arguments: an \"infile\" "
 				"and an \"outfile\"\n", argvec[ 0 ] );
+		close_file( &infile );
+		close_file( &outfile );
 		return -1;
 	}
 
-	if( ( infile= fopen( argvec[ 1 ], "rb" ) ) == NULL )
+	if( ( infile.fp= fopen( argvec[ 1 ], "rb" ) ) == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 1 ] );
+		close_file( &infile );
+		close_file( &outfile );
 		return -1;
 	}
 
-	if( ( outfile= fopen( argvec[ 2 ], "wb" ) ) == NULL )
+	if( ( outfile.fp= fopen( argvec[ 2 ], "wb" ) ) == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 2 ] );
-		fclose( infile );
+		close_file( &infile );
+		close_file( &outfile );
 		return -1;
 	}
 
-	while( !feof( infile ) )
+	while( !feof( infile.fp ) )
 	{
 		if( DEBUG_MODE ) fprintf( stderr, "Try to read %zu bytes\n", res );
-		error= read_buffer( COPYBUFSIZE, infile, &res, &buf );
+		error= read_buffer( COPYBUFSIZE, infile.fp, &res, &buf );
 		if( error )
 		{
 			if( error == -2 ) fprintf( stderr, "Unable to allocate a copy buffer.\n" );
 			else fprintf( stderr, "An error in reading occurred.\n" );
 
 			free( buf );
-			fclose( outfile );
-			fclose( infile );
+			close_file( &infile );
+			close_file( &outfile );
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Read %zu bytes\n", res );
 
-		if( ( fwrite( buf, 1, res, outfile ) < res ) && ferror( outfile ) )
+		if( ( fwrite( buf, 1, res, outfile.fp ) < res ) && ferror( outfile.fp ) )
 		{
 			fprintf( stderr, "An error in copying occurred.\n" );
 			free( buf );
-			fclose( outfile );
-			fclose( infile );
+			close_file( &infile );
+			close_file( &outfile );
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Wrote %zu bytes\n", res );
@@ -85,8 +104,8 @@ main( int argcnt, char *argvec[] )
 	}
 
 	/* Copy is complete.  Free our resources. */
-	fclose( outfile );
-	fclose( infile );
+	close_file( &infile );
+	close_file( &outfile );
 
 	return 0;
 }
