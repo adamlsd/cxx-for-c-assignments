@@ -1,6 +1,6 @@
 /*
- * This is a simple file copy program in C++, but it uses C style
- * resource management.
+ * This is a simple file copy program in C++; it uses some C++ resource
+ * management.
  *
  * The design of this program is not that of a typical copy program.
  * This program's design uses a heap allocated memory block to store
@@ -24,10 +24,11 @@ struct FileGuard
 {
 	FILE *fp;
 
-	// Wouldn't it be nice if we could run this at the exit of every scope?
-	void
-	close_file()
+	// C++ destructors ARE run at the exit of every scope containing an instance
+	// so this does what we'd like.
+	~FileGuard()
 	{
+		if( DEBUG_MODE ) fprintf( stderr, "Closing file.\n" );
 		fclose( fp );
 	}
 };
@@ -51,24 +52,18 @@ main( int argcnt, char *argvec[] )
 	{
 		fprintf( stderr, "%s must take two arguments: an \"infile\" "
 				"and an \"outfile\"\n", argvec[ 0 ] );
-		infile.close_file();
-		outfile.close_file();
 		return -1;
 	}
 
 	if( ( infile.fp= fopen( argvec[ 1 ], "rb" ) ) == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 1 ] );
-		infile.close_file();
-		outfile.close_file();
 		return -1;
 	}
 
 	if( ( outfile.fp= fopen( argvec[ 2 ], "wb" ) ) == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 2 ] );
-		infile.close_file();
-		outfile.close_file();
 		return -1;
 	}
 
@@ -82,8 +77,6 @@ main( int argcnt, char *argvec[] )
 			else fprintf( stderr, "An error in reading occurred.\n" );
 
 			free( buf );
-			infile.close_file();
-			outfile.close_file();
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Read %zu bytes\n", res );
@@ -92,8 +85,6 @@ main( int argcnt, char *argvec[] )
 		{
 			fprintf( stderr, "An error in copying occurred.\n" );
 			free( buf );
-			infile.close_file();
-			outfile.close_file();
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Wrote %zu bytes\n", res );
@@ -102,10 +93,7 @@ main( int argcnt, char *argvec[] )
 		if( DEBUG_MODE ) fprintf( stderr, "Freed %zu bytes\n", res );
 	}
 
-	/* Copy is complete.  Free our resources. */
-
-	infile.close_file();
-	outfile.close_file();
+	/* Copy is complete.  Our resources are cleaned by dtors. */
 
 	return 0;
 }
