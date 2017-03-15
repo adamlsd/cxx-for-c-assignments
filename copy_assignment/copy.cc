@@ -1,6 +1,5 @@
 /*
- * This is a simple file copy program in C++; it uses some C++ resource
- * management.
+ * This is a simple file copy program in C++.
  *
  * The design of this program is not that of a typical copy program.
  * This program's design uses a heap allocated memory block to store
@@ -24,12 +23,19 @@ struct FileGuard
 {
 	FILE *fp;
 
-	// C++ destructors ARE run at the exit of every scope containing an instance
-	// so this does what we'd like.
 	~FileGuard()
 	{
-		if( DEBUG_MODE ) fprintf( stderr, "Closing file.\n" );
 		fclose( fp );
+	}
+};
+
+struct MemoryGuard
+{
+	void *p;
+
+	~MemoryGuard()
+	{
+		free( p );
 	}
 };
 
@@ -44,9 +50,7 @@ main( int argcnt, char *argvec[] )
 {
 	FileGuard infile= { NULL };
 	FileGuard outfile= { NULL };
-	void *buf;
 	size_t res;
-	int error;
 
 	if( argcnt != 3 )
 	{
@@ -69,28 +73,24 @@ main( int argcnt, char *argvec[] )
 
 	while( !feof( infile.fp ) )
 	{
+		MemoryGuard buf= { NULL };
 		if( DEBUG_MODE ) fprintf( stderr, "Try to read %zu bytes\n", res );
-		error= read_buffer( COPYBUFSIZE, infile.fp, &res, &buf );
+		int error= read_buffer( COPYBUFSIZE, infile.fp, &res, &buf.p );
 		if( error )
 		{
 			if( error == -2 ) fprintf( stderr, "Unable to allocate a copy buffer.\n" );
 			else fprintf( stderr, "An error in reading occurred.\n" );
-
-			free( buf );
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Read %zu bytes\n", res );
 
-		if( ( fwrite( buf, 1, res, outfile.fp ) < res ) && ferror( outfile.fp ) )
+		if( ( fwrite( buf.p, 1, res, outfile.fp ) < res ) && ferror( outfile.fp ) )
 		{
 			fprintf( stderr, "An error in copying occurred.\n" );
-			free( buf );
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Wrote %zu bytes\n", res );
 
-		free( buf );
-		if( DEBUG_MODE ) fprintf( stderr, "Freed %zu bytes\n", res );
 	}
 
 	/* Copy is complete.  Our resources are cleaned by dtors. */
