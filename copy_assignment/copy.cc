@@ -42,6 +42,8 @@ struct MemoryGuard
 
 	MemoryGuard() { p= 0; }
 
+	MemoryGuard( size_t amount ) { p= malloc( amount ); }
+
 	~MemoryGuard()
 	{
 		free( p );
@@ -52,7 +54,7 @@ struct MemoryGuard
  * Returns a newly allocated buffer in `buf`, and the amount read in `amount_read`.
  * Populates the buffer with data from the file, up to the amount read.
  */
-static int read_buffer( size_t amount, FILE *fp, size_t *amount_read, void **buf );
+static int read_buffer( size_t amount, FILE *fp, size_t *amount_read, MemoryGuard *buf );
 
 int
 main( int argcnt, char *argvec[] )
@@ -82,9 +84,9 @@ main( int argcnt, char *argvec[] )
 
 	while( !feof( infile.fp ) )
 	{
-		MemoryGuard buf;
 		if( DEBUG_MODE ) fprintf( stderr, "Try to read %zu bytes\n", res );
-		int error= read_buffer( COPYBUFSIZE, infile.fp, &res, &buf.p );
+		MemoryGuard buf;
+		int error= read_buffer( COPYBUFSIZE, infile.fp, &res, &buf );
 		if( error )
 		{
 			if( error == -2 ) fprintf( stderr, "Unable to allocate a copy buffer.\n" );
@@ -109,25 +111,30 @@ main( int argcnt, char *argvec[] )
 
 
 static int
-read_buffer( size_t amount, FILE *infile, size_t *amount_read, void **buf )
+read_buffer( size_t amount, FILE *infile, size_t *amount_read, MemoryGuard *buf )
 {
 	assert( buf );
 	assert( amount_read );
 	if( DEBUG_MODE ) fprintf( stderr, "Try to allocate %zu bytes\n", amount );
-	if( ( *buf= malloc( amount ) ) == NULL )
+	MemoryGuard internal( amount );
+	if( internal.p == NULL )
 	{
 		*amount_read= 0;
 		return -2;
 	}
 	if( DEBUG_MODE ) fprintf( stderr, "allocated %zu bytes\n", amount );
 
-	*amount_read= fread( *buf, 1, amount, infile );
+	*amount_read= fread( internal.p, 1, amount, infile );
 	if( DEBUG_MODE ) fprintf( stderr, "just read %zu bytes\n", *amount_read );
 
 	if( *amount_read < COPYBUFSIZE && ( ferror( infile ) || !feof( infile ) ) )
 	{
 		return -1;
 	}
+
+	// Transfer the ownership to the supplied memory guard.
+	buf->p= internal.p;
+	internal.p= NULL;
 
 	return 0;
 }
