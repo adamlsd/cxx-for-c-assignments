@@ -25,6 +25,11 @@ struct FileGuard
 
 	FileGuard() { fp= 0; }
 
+	FileGuard( const char *name, const char *mode )
+	{
+		fp= fopen( name, mode );
+	}
+
 	~FileGuard()
 	{
 		fclose( fp );
@@ -52,8 +57,6 @@ static int read_buffer( size_t amount, FILE *fp, size_t *amount_read, void **buf
 int
 main( int argcnt, char *argvec[] )
 {
-	FileGuard infile;
-	FileGuard outfile;
 	size_t res;
 
 	if( argcnt != 3 )
@@ -63,13 +66,15 @@ main( int argcnt, char *argvec[] )
 		return -1;
 	}
 
-	if( ( infile.fp= fopen( argvec[ 1 ], "rb" ) ) == NULL )
+	FileGuard infile( argvec[ 1 ], "rb" );
+	if( infile.fp == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 1 ] );
 		return -1;
 	}
 
-	if( ( outfile.fp= fopen( argvec[ 2 ], "wb" ) ) == NULL )
+	FileGuard outfile( argvec[ 2 ], "wb" );
+	if( outfile.fp == NULL )
 	{
 		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 2 ] );
 		return -1;
