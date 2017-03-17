@@ -39,28 +39,90 @@ struct FileGuard
 	}
 };
 
+// MemoryGuard could be modified, optionally
+// to implement a reference-counting semantic
+// to help with lifetime issues.
 struct MemoryGuard
 {
 	void *p;
 
-	MemoryGuard() { p= 0; }
+	size_t *refcount;
 
-	MemoryGuard( size_t amount ) { p= malloc( amount ); }
+	MemoryGuard()
+	{
+		refcount= new size_t( 1 );
+		p= 0;
+	}
 
-	MemoryGuard( const MemoryGuard &copy ); // Disable copy construction
-	MemoryGuard &operator= ( const MemoryGuard &copy ); // Disable copy assignment
+	MemoryGuard( size_t amount )
+	{
+		refcount= new size_t( 1 );
+		p= malloc( amount );
+	}
+
+	// When a memory-guard is copied, we bump the refcount
+	// by one -- this facilitates cleaning up the resource
+	// when it is no longer used, yet still preserves a relatively
+	// cheap copy operation.
+	MemoryGuard( const MemoryGuard &copy )
+	{
+		p= copy.p;
+		refcount= copy.refcount;
+		++*refcount;
+	}
+
+	MemoryGuard &
+	operator= ( const MemoryGuard &copy )
+	{
+		if( !--*refcount )
+		{
+			free( p );
+			delete refcount;
+		}
+		p= copy.p;
+		refcount= copy.refcount;
+		++*refcount;
+
+		return *this;
+	}
 
 	~MemoryGuard()
 	{
-		free( p );
+		if( !--*refcount )
+		{
+			free( p );
+			delete refcount;
+		}
 	}
 };
 
 /*
- * Returns a newly allocated buffer in `buf`, and the amount read in `amount_read`.
+ * MemoryGuard can be combined with an error code, to facilitate returning
+ * from functions and reporting errors.
+ */
+struct MemoryGuardReturn
+{
+	int errorCode;
+	MemoryGuard memory;
+
+	MemoryGuardReturn( int code )
+	{
+		errorCode= code;
+	}
+
+	MemoryGuardReturn( MemoryGuard m )
+	{
+		errorCode= 0;
+		memory= m;
+	}
+};
+	
+
+/*
+ * Returns a newly allocated buffer, and indicates the amount read in `amount_read`.
  * Populates the buffer with data from the file, up to the amount read.
  */
-static int read_buffer( size_t amount, FILE *fp, size_t *amount_read, MemoryGuard *buf );
+static MemoryGuardReturn read_buffer( size_t amount, FILE *fp, size_t *amount_read );
 
 int
 main( int argcnt, char *argvec[] )
@@ -91,15 +153,15 @@ main( int argcnt, char *argvec[] )
 	while( !feof( infile.fp ) )
 	{
 		if( DEBUG_MODE ) fprintf( stderr, "Try to read %zu bytes\n", res );
-		MemoryGuard buf;
-		int error= read_buffer( COPYBUFSIZE, infile.fp, &res, &buf );
-		if( error )
+		MemoryGuardReturn bufWithStatus= read_buffer( COPYBUFSIZE, infile.fp, &res );
+		if( bufWithStatus.errorCode )
 		{
-			if( error == -2 ) fprintf( stderr, "Unable to allocate a copy buffer.\n" );
+			if( bufWithStatus.errorCode == -2 ) fprintf( stderr, "Unable to allocate a copy buffer.\n" );
 			else fprintf( stderr, "An error in reading occurred.\n" );
 			return -1;
 		}
 		if( DEBUG_MODE ) fprintf( stderr, "Read %zu bytes\n", res );
+		MemoryGuard buf= bufWithStatus.memory;
 
 		if( ( fwrite( buf.p, 1, res, outfile.fp ) < res ) && ferror( outfile.fp ) )
 		{
@@ -116,17 +178,16 @@ main( int argcnt, char *argvec[] )
 }
 
 
-static int
-read_buffer( size_t amount, FILE *infile, size_t *amount_read, MemoryGuard *buf )
+static MemoryGuardReturn
+read_buffer( size_t amount, FILE *infile, size_t *amount_read )
 {
-	assert( buf );
 	assert( amount_read );
 	if( DEBUG_MODE ) fprintf( stderr, "Try to allocate %zu bytes\n", amount );
 	MemoryGuard internal( amount );
 	if( internal.p == NULL )
 	{
 		*amount_read= 0;
-		return -2;
+		return MemoryGuardReturn( -2 );
 	}
 	if( DEBUG_MODE ) fprintf( stderr, "allocated %zu bytes\n", amount );
 
@@ -135,14 +196,11 @@ read_buffer( size_t amount, FILE *infile, size_t *amount_read, MemoryGuard *buf 
 
 	if( *amount_read < COPYBUFSIZE && ( ferror( infile ) || !feof( infile ) ) )
 	{
-		return -1;
+		return MemoryGuardReturn( -1 );
 	}
 
-	// Transfer the ownership to the supplied memory guard.
-	buf->p= internal.p;
-	internal.p= NULL;
-
-	return 0;
+	// Transfer the ownership to the caller
+	return MemoryGuardReturn( internal );
 }
 
 /* End of sample program */
