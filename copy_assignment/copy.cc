@@ -30,6 +30,9 @@ struct FileGuard
 		fp= fopen( name, mode );
 	}
 
+	FileGuard( const FileGuard &copy ); // Disable copy construction
+	FileGuard &operator= ( const FileGuard &copy ); // Disable copy assignment
+
 	~FileGuard()
 	{
 		fclose( fp );
@@ -43,6 +46,9 @@ struct MemoryGuard
 	MemoryGuard() { p= 0; }
 
 	MemoryGuard( size_t amount ) { p= malloc( amount ); }
+
+	MemoryGuard( const MemoryGuard &copy ); // Disable copy construction
+	MemoryGuard &operator= ( const MemoryGuard &copy ); // Disable copy assignment
 
 	~MemoryGuard()
 	{
