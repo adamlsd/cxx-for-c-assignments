@@ -19,24 +19,62 @@ const size_t COPYBUFSIZE= ( 256 * 1024 );
 
 const bool DEBUG_MODE= true;
 
+// File guard could be reference counted, to make a handy file-opening
+// function which prints errors... and the guard can have an "error"
+// state function.
 struct FileGuard
 {
 	FILE *fp;
+	size_t *refcount;
 
-	FileGuard() { fp= 0; }
+	FileGuard()
+	{
+		refcount= new size_t( 1 );
+		fp= 0;
+	}
 
 	FileGuard( const char *name, const char *mode )
 	{
+		refcount= new size_t( 1 );
 		fp= fopen( name, mode );
 	}
 
-	FileGuard( const FileGuard &copy ); // Disable copy construction
-	FileGuard &operator= ( const FileGuard &copy ); // Disable copy assignment
+	FileGuard( const FileGuard &copy )
+	{
+		fp= copy.fp;
+		refcount= copy.refcount;
+		++*refcount;
+	}
+
+	FileGuard &operator= ( const FileGuard &copy )
+	{
+		if( !--*refcount )
+		{
+			fclose( fp );
+			delete refcount;
+		}
+		fp= copy.fp;
+		refcount= copy.refcount;
+		++*refcount;
+
+		return *this;
+	}
 
 	~FileGuard()
 	{
-		fclose( fp );
+		if( !--*refcount )
+		{
+			fclose( fp );
+			delete refcount;
+		}
 	}
+
+	// Returns true if there is no file open, or
+	// if there is an error on the file pointer itself.
+	bool error() { return !fp || ferror( fp ); }
+
+	// Returns true when a file is at the end (or no file is open.)
+	bool eof() { return !fp || feof( fp ); }
 };
 
 // MemoryGuard could be modified, optionally
@@ -116,13 +154,19 @@ struct MemoryGuardReturn
 		memory= m;
 	}
 };
-	
+
+/*
+ * Returns a newly opened file, or prints an error and returns a
+ * FileGuard in an error state.
+ */
+static FileGuard openFileForRead( const char *fileName );
+static FileGuard openFileForWrite( const char *fileName );
 
 /*
  * Returns a newly allocated buffer, and indicates the amount read in `amount_read`.
- * Populates the buffer with data from the file, up to the amount read.
+ * Populates the buffer with data from the `file`, up to the amount read.
  */
-static MemoryGuardReturn read_buffer( size_t amount, FILE *fp, size_t *amount_read );
+static MemoryGuardReturn read_buffer( size_t amount, FileGuard file, size_t *amount_read );
 
 int
 main( int argcnt, char *argvec[] )
@@ -136,24 +180,16 @@ main( int argcnt, char *argvec[] )
 		return -1;
 	}
 
-	FileGuard infile( argvec[ 1 ], "rb" );
-	if( infile.fp == NULL )
-	{
-		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 1 ] );
-		return -1;
-	}
+	FileGuard infile= openFileForRead( argvec[ 1 ] );
+	if( infile.error() ) return -1;
 
-	FileGuard outfile( argvec[ 2 ], "wb" );
-	if( outfile.fp == NULL )
-	{
-		fprintf( stderr, "Unable to open file \"%s\"\n", argvec[ 2 ] );
-		return -1;
-	}
+	FileGuard outfile= openFileForWrite( argvec[ 2 ] );
+	if( outfile.error() ) return -1;
 
-	while( !feof( infile.fp ) )
+	while( !infile.eof() )
 	{
 		if( DEBUG_MODE ) fprintf( stderr, "Try to read %zu bytes\n", res );
-		MemoryGuardReturn bufWithStatus= read_buffer( COPYBUFSIZE, infile.fp, &res );
+		MemoryGuardReturn bufWithStatus= read_buffer( COPYBUFSIZE, infile, &res );
 		if( bufWithStatus.errorCode )
 		{
 			if( bufWithStatus.errorCode == -2 ) fprintf( stderr, "Unable to allocate a copy buffer.\n" );
@@ -163,7 +199,7 @@ main( int argcnt, char *argvec[] )
 		if( DEBUG_MODE ) fprintf( stderr, "Read %zu bytes\n", res );
 		MemoryGuard buf= bufWithStatus.memory;
 
-		if( ( fwrite( buf.p, 1, res, outfile.fp ) < res ) && ferror( outfile.fp ) )
+		if( ( fwrite( buf.p, 1, res, outfile.fp ) < res ) && outfile.error() )
 		{
 			fprintf( stderr, "An error in copying occurred.\n" );
 			return -1;
@@ -179,7 +215,7 @@ main( int argcnt, char *argvec[] )
 
 
 static MemoryGuardReturn
-read_buffer( size_t amount, FILE *infile, size_t *amount_read )
+read_buffer( size_t amount, FileGuard infile, size_t *amount_read )
 {
 	assert( amount_read );
 	if( DEBUG_MODE ) fprintf( stderr, "Try to allocate %zu bytes\n", amount );
@@ -191,16 +227,37 @@ read_buffer( size_t amount, FILE *infile, size_t *amount_read )
 	}
 	if( DEBUG_MODE ) fprintf( stderr, "allocated %zu bytes\n", amount );
 
-	*amount_read= fread( internal.p, 1, amount, infile );
+	*amount_read= fread( internal.p, 1, amount, infile.fp );
 	if( DEBUG_MODE ) fprintf( stderr, "just read %zu bytes\n", *amount_read );
 
-	if( *amount_read < COPYBUFSIZE && ( ferror( infile ) || !feof( infile ) ) )
+	if( *amount_read < COPYBUFSIZE && ( infile.error() || !infile.eof() ) )
 	{
 		return MemoryGuardReturn( -1 );
 	}
 
 	// Transfer the ownership to the caller
 	return MemoryGuardReturn( internal );
+}
+
+static FileGuard
+openFileWithMode( const char *fileName, const char *mode )
+{
+	FileGuard result( fileName, mode );
+	if( result.error() ) fprintf( stderr, "Unable to open file \"%s\"\n", fileName );
+	return result;
+}
+
+
+static FileGuard
+openFileForRead( const char *fileName )
+{
+	return openFileWithMode( fileName, "rb" );
+}
+
+static FileGuard
+openFileForWrite( const char *fileName )
+{
+	return openFileWithMode( fileName, "wb" );
 }
 
 /* End of sample program */
