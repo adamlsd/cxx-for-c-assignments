@@ -22,5 +22,13 @@ The first assignment, `assignment-1` branch, is a simple file copy program.  It
 uses C IO primitives but the proposed solution implements C++ RAII types to
 manage the lifecycle of C `stdio` resources.
 
-Later assignments will be posted to this repository, and this readme file will
-be updated in those branches with any extra details.
+The second assignment, `assignment-2` branch, is a pair of complex number
+arithmetic libraries.  One uses external-structure definition to provide
+data hiding in C, but requires resource-lifetime management and imposes
+function-call overhead.  The other uses inline-structure defintiion
+and macros to attain speed, at the cost of ugliness and multiple
+evaluation risks.  The proposed solution for students should implement
+a single C++ complex number library using inline operator overloads and
+optionally use `private` to provide data hiding.  The result should be a
+simple-to-use C++ complex number type which looks like a built-in type
+in terms of usage.
